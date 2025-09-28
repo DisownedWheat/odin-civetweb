@@ -25,6 +25,7 @@ import "core:c"
 
 _ :: c
 
+foreign import lib "./libcivetweb.a"
 
 // CIVETWEB_HEADER_INCLUDED :: 
 
@@ -72,13 +73,13 @@ MG_FEATURES_ALL :: 65535
 /* Maximum number of headers */
 MG_MAX_HEADERS :: (64)
 
-mg_header :: struct {
+header :: struct {
 	name:  cstring, /* HTTP header name */
 	value: cstring, /* HTTP header value */
 }
 
 /* This structure contains information about the HTTP request. */
-mg_request_info :: struct {
+request_info :: struct {
 	request_method:               cstring, /* "GET", "POST", etc */
 	request_uri:                  cstring, /* URL-decoded URI (absolute or relative,
 	                             * as in the request) */
@@ -105,8 +106,8 @@ mg_request_info :: struct {
 	user_data:                    rawptr, /* User data pointer passed to mg_start() */
 	conn_data:                    rawptr, /* Connection-specific user data */
 	num_headers:                  c.int, /* Number of HTTP headers */
-	http_headers:                 [64]mg_header, /* Allocate maximum headers */
-	client_cert:                  ^mg_client_cert, /* Client certificate information */
+	http_headers:                 [64]header, /* Allocate maximum headers */
+	client_cert:                  ^client_cert, /* Client certificate information */
 	acceptedWebSocketSubprotocol: cstring, /* websocket subprotocol,
 	                                           * accepted during handshake */
 }
@@ -114,23 +115,23 @@ mg_request_info :: struct {
 // /* Client certificate information (part of mg_request_info) */
 // mg_client_cert :: struct {}
 
-mg_connection :: struct {}
+connection :: struct {}
 mg_context :: struct {}
 
 /* This structure contains information about the HTTP request. */
 /* This structure may be extended in future versions. */
-mg_response_info :: struct {
+response_info :: struct {
 	status_code:    c.int, /* E.g. 200 */
 	status_text:    cstring, /* E.g. "OK" */
 	http_version:   cstring, /* E.g. "1.0", "1.1" */
 	content_length: c.longlong, /* Length (in bytes) of the request body,
 	                             can be -1 if no length was given. */
 	num_headers:    c.int, /* Number of HTTP headers */
-	http_headers:   [64]mg_header, /* Allocate maximum headers */
+	http_headers:   [64]header, /* Allocate maximum headers */
 }
 
 /* Client certificate information (part of mg_request_info) */
-mg_client_cert :: struct {
+client_cert :: struct {
 	peer_cert: rawptr,
 	subject:   cstring,
 	issuer:    cstring,
@@ -141,7 +142,7 @@ mg_client_cert :: struct {
 /* This structure needs to be passed to mg_start(), to let civetweb know
 which callbacks to invoke. For a detailed description, see
 https://github.com/civetweb/civetweb/blob/master/docs/UserManual.md */
-mg_callbacks :: struct {
+callbacks :: struct {
 	/* Called when civetweb has received new HTTP request.
 	If the callback returns one, it must process the request
 	by sending valid HTTP headers and a body. Civetweb will not do
@@ -157,21 +158,21 @@ mg_callbacks :: struct {
 	return code is stored as a HTTP status code for the
 	access log. */
 	begin_request:          
-	proc "c" (_: ^mg_connection) -> c.int,
+	proc "c" (_: ^connection) -> c.int,
 
 	/* Called when civetweb has finished processing request. */
 	end_request:            
-	proc "c" (_: ^mg_connection, _: c.int),
+	proc "c" (_: ^connection, _: c.int),
 
 	/* Called when civetweb is about to log a message. If callback returns
 	non-zero, civetweb does not log anything. */
 	log_message:            
-	proc "c" (_: ^mg_connection, _: cstring) -> c.int,
+	proc "c" (_: ^connection, _: cstring) -> c.int,
 
 	/* Called when civetweb is about to log access. If callback returns
 	non-zero, civetweb does not log anything. */
 	log_access:             
-	proc "c" (_: ^mg_connection, _: cstring) -> c.int,
+	proc "c" (_: ^connection, _: cstring) -> c.int,
 
 	/* Called when civetweb initializes SSL library.
 	Parameters:
@@ -232,7 +233,7 @@ mg_callbacks :: struct {
 	mg_set_websocket_handler instead.
 	*/
 	connection_close:       
-	proc "c" (_: ^mg_connection),
+	proc "c" (_: ^connection),
 
 	/* Called after civetweb has closed a connection.  The per-context mutex is
 	locked when this is invoked.
@@ -243,7 +244,7 @@ mg_callbacks :: struct {
 	this is the last chance to free it.
 	*/
 	connection_closed:      
-	proc "c" (_: ^mg_connection),
+	proc "c" (_: ^connection),
 
 	/* init_lua is called when civetweb is about to serve Lua server page.
 	exit_lua is called when the Lua processing is complete.
@@ -255,9 +256,9 @@ mg_callbacks :: struct {
 	context_flags & 0x0F: (0-15) Lua environment type
 	*/
 	init_lua:               
-	proc "c" (_: ^mg_connection, _: rawptr, _: c.uint),
+	proc "c" (_: ^connection, _: rawptr, _: c.uint),
 	exit_lua:               
-	proc "c" (_: ^mg_connection, _: rawptr, _: c.uint),
+	proc "c" (_: ^connection, _: rawptr, _: c.uint),
 
 	/* Called when civetweb is about to send HTTP error to the client.
 	Implementing this callback allows to create custom error pages.
@@ -269,7 +270,7 @@ mg_callbacks :: struct {
 	1: run civetweb error handler.
 	0: callback already handled the error. */
 	http_error:             
-	proc "c" (_: ^mg_connection, _: c.int, _: cstring) -> c.int,
+	proc "c" (_: ^connection, _: c.int, _: cstring) -> c.int,
 
 	/* Called after civetweb context has been created, before requests
 	are processed.
@@ -328,7 +329,7 @@ mg_callbacks :: struct {
 	*   Otherwise, the result is undefined
 	*/
 	init_connection:        
-	proc "c" (_: ^mg_connection, _: ^rawptr) -> c.int,
+	proc "c" (_: ^connection, _: ^rawptr) -> c.int,
 }
 
 /* mg_request_handler
@@ -343,7 +344,7 @@ Returns:
 0: the handler could not handle the request, so fall through.
 1 - 999: the handler processed the request. The return code is
 stored as a HTTP status code for the access log. */
-mg_request_handler :: proc "c" (_: ^mg_connection, _: rawptr) -> c.int
+request_handler :: proc "c" (_: ^connection, _: rawptr) -> c.int
 
 /* Callback types for websocket handlers in C/C++.
 
@@ -370,25 +371,25 @@ Return value:
 
 mg_connection_close_handler
 Is called, when the connection is closed.*/
-mg_websocket_connect_handler :: proc "c" (_: ^mg_connection, _: rawptr) -> c.int
+websocket_connect_handler :: proc "c" (_: ^connection, _: rawptr) -> c.int
 
-mg_websocket_ready_handler :: proc "c" (_: ^mg_connection, _: rawptr)
+websocket_ready_handler :: proc "c" (_: ^connection, _: rawptr)
 
-mg_websocket_data_handler :: proc "c" (
-	_: ^mg_connection,
-	_: c.int,
+websocket_data_handler :: proc "c" (
+	_: ^connection,
+	_: Websocket_Opcode,
 	_: cstring,
-	_: c.int,
+	_: c.size_t,
 	_: rawptr,
 ) -> c.int
 
-mg_websocket_close_handler :: proc "c" (_: ^mg_connection, _: rawptr)
+websocket_close_handler :: proc "c" (_: ^connection, _: rawptr)
 
 /* struct mg_websocket_subprotocols
 *
 * List of accepted subprotocols
 */
-mg_websocket_subprotocols :: struct {
+websocket_subprotocols :: struct {
 	nb_subprotocols: c.int,
 	subprotocols:    [^]cstring,
 }
@@ -404,36 +405,29 @@ Returns:
 0: access denied
 1: access granted
 */
-mg_authorization_handler :: proc "c" (_: ^mg_connection, _: rawptr) -> c.int
+authorization_handler :: proc "c" (_: ^connection, _: rawptr) -> c.int
 
-mg_option :: struct {
+option :: struct {
 	name:          cstring,
 	type:          c.int,
 	default_value: cstring,
 }
 
 /* Configuration types */
-MG_CONFIG_TYPE_UNKNOWN :: 0
+Config_Type :: enum c.int {
+	Unknown          = 0,
+	Number           = 1,
+	String           = 2,
+	File             = 3,
+	Directory        = 4,
+	Boolean          = 5,
+	Pattern          = 6,
+	String_List      = 7,
+	String_Multiline = 8,
+	Yes_No_Optional  = 9,
+}
 
-MG_CONFIG_TYPE_NUMBER :: 1
-
-MG_CONFIG_TYPE_STRING :: 2
-
-MG_CONFIG_TYPE_FILE :: 3
-
-MG_CONFIG_TYPE_DIRECTORY :: 4
-
-MG_CONFIG_TYPE_BOOLEAN :: 5
-
-MG_CONFIG_TYPE_EXT_PATTERN :: 6
-
-MG_CONFIG_TYPE_STRING_LIST :: 7
-
-MG_CONFIG_TYPE_STRING_MULTILINE :: 8
-
-MG_CONFIG_TYPE_YES_NO_OPTIONAL :: 9
-
-mg_server_port :: struct {
+server_port :: struct {
 	protocol:    c.int, /* 1 = IPv4, 2 = IPv6, 3 = both */
 	port:        c.int, /* port number */
 	is_ssl:      c.int, /* https port: 0 = no, 1 = yes */
@@ -445,24 +439,21 @@ mg_server_port :: struct {
 }
 
 /* Legacy name */
-mg_server_ports :: mg_server_port
+server_ports :: server_port
 
 /* WebSocket OpcCodes, from http://tools.ietf.org/html/rfc6455 */
-MG_WEBSOCKET_OPCODE_CONTINUATION :: 0
-
-MG_WEBSOCKET_OPCODE_TEXT :: 1
-
-MG_WEBSOCKET_OPCODE_BINARY :: 2
-
-MG_WEBSOCKET_OPCODE_CONNECTION_CLOSE :: 8
-
-MG_WEBSOCKET_OPCODE_PING :: 9
-
-MG_WEBSOCKET_OPCODE_PONG :: 10
+Websocket_Opcode :: enum c.int {
+	Continuation     = 0,
+	Text             = 1,
+	Binary           = 2,
+	Connection_Close = 8,
+	Ping             = 9,
+	Pong             = 10,
+}
 
 /* This structure contains callback functions for handling form fields.
 It is used as an argument to mg_handle_form_request. */
-mg_form_data_handler :: struct {
+form_data_handler :: struct {
 	/* This callback function is called, if a new field has been found.
 	* The return value of this callback is used to define how the field
 	* should be processed.
@@ -483,7 +474,7 @@ mg_form_data_handler :: struct {
 	*   (See FORM_FIELD_STORAGE_*).
 	*/
 	field_found:
-	proc "c" (_: cstring, _: cstring, _: cstring, _: c.int, _: rawptr) -> c.int,
+	proc "c" (_: cstring, _: cstring, _: cstring, _: c.int, _: rawptr) -> Form_Field_Storage,
 
 	/* If the "field_found" callback returned FORM_FIELD_STORAGE_GET,
 	* this callback will receive the field data.
@@ -498,7 +489,7 @@ mg_form_data_handler :: struct {
 	*   the current request (See MG_FORM_FIELD_HANDLE_*).
 	*/
 	field_get:  
-	proc "c" (_: cstring, _: cstring, _: c.int, _: rawptr) -> c.int,
+	proc "c" (_: cstring, _: cstring, _: c.int, _: rawptr) -> Form_Field_Handle,
 
 	/* If the "field_found" callback returned FORM_FIELD_STORAGE_STORE,
 	* the data will be stored into a file. If the file has been written
@@ -518,7 +509,7 @@ mg_form_data_handler :: struct {
 	*   the current request (See MG_FORM_FIELD_HANDLE_*).
 	*/
 	field_store:
-	proc "c" (_: cstring, _: c.longlong, _: rawptr) -> c.int,
+	proc "c" (_: cstring, _: c.longlong, _: rawptr) -> Form_Field_Handle,
 
 	/* User supplied argument, passed to all callback functions. */
 	user_data:  
@@ -527,39 +518,38 @@ mg_form_data_handler :: struct {
 
 /* Return values definition for the "field_found" callback in
 * mg_form_data_handler. */
-MG_FORM_FIELD_STORAGE_SKIP :: 0
-
-MG_FORM_FIELD_STORAGE_GET :: 1
-
-MG_FORM_FIELD_STORAGE_STORE :: 2
-
-MG_FORM_FIELD_STORAGE_ABORT :: 16
+Form_Field_Storage :: enum c.int {
+	Skip  = 0,
+	Get   = 1,
+	Store = 2,
+	Abort = 16,
+}
 
 /* Return values for "field_get" and "field_store" */
-MG_FORM_FIELD_HANDLE_GET :: 1
-
-MG_FORM_FIELD_HANDLE_NEXT :: 8
-
-MG_FORM_FIELD_HANDLE_ABORT :: 16
+Form_Field_Handle :: enum c.int {
+	Get   = 1,
+	Next  = 8,
+	Abort = 16,
+}
 
 /* Convenience function -- create detached thread.
 Return: 0 on success, non-0 on error. */
-mg_thread_func_t :: proc "c" (_: rawptr) -> rawptr
+thread_func_t :: proc "c" (_: rawptr) -> rawptr
 
 MG_MATCH_CONTEXT_MAX_MATCHES :: (32)
 
-mg_match_element :: struct {
+match_element :: struct {
 	str: cstring, /* First character matching wildcard */
 	len: c.int, /* Number of character matching wildcard */
 }
 
-mg_match_context :: struct {
+match_context :: struct {
 	case_sensitive: c.int, /* Input: 1 (case sensitive) or 0 (insensitive) */
 	num_matches:    c.int, /* Output: Number of wildcard matches returned. */
-	match:          [32]mg_match_element, /* Output */
+	match:          [32]match_element, /* Output */
 }
 
-mg_client_options :: struct {
+client_options :: struct {
 	host:        cstring,
 	port:        c.int,
 	client_cert: cstring,
@@ -575,63 +565,43 @@ but provide additional options and/or provide improved error diagnostics.
 
 Note: Experimental interfaces may change
 */
-mg_error_data :: struct {
-	code:             c.uint, /* error code (number) */
+error_data :: struct {
+	code:             Error_Data_Code, /* error code (number) */
 	code_sub:         c.uint, /* error sub code (number) */
 	text:             cstring, /* buffer for error text */
 	text_buffer_size: c.int, /* size of buffer of "text" */
 }
 
 /* Values for error "code" in mg_error_data */
-MG_ERROR_DATA_CODE_OK :: 0
+Error_Data_Code :: enum c.int {
+	Ok                    = 0,
+	Invalid_Param         = 1,
+	Invalid_Option        = 2,
+	Init_TLS_Failed       = 3,
+	Missing_Option        = 4,
+	Duplicate_Domain      = 5,
+	Out_Of_Memory         = 6,
+	Server_Stopped        = 7,
+	Init_Library_Failed   = 8,
+	Os_Error              = 9,
+	Init_Ports_Failed     = 10,
+	Init_User_Failed      = 11,
+	Init_ACL_Failed       = 12,
+	Invalid_Pass_File     = 13,
+	Script_Error          = 14,
+	Host_Not_Found        = 15,
+	Connect_Timeout       = 16,
+	Connect_Failed        = 17,
+	TLS_Client_Cert_Error = 18,
+	TLS_Server_Cert_Error = 19,
+	TLS_Connect_Error     = 20,
+}
 
-MG_ERROR_DATA_CODE_INVALID_PARAM :: 1
-
-MG_ERROR_DATA_CODE_INVALID_OPTION :: 2
-
-MG_ERROR_DATA_CODE_INIT_TLS_FAILED :: 3
-
-MG_ERROR_DATA_CODE_MISSING_OPTION :: 4
-
-MG_ERROR_DATA_CODE_DUPLICATE_DOMAIN :: 5
-
-MG_ERROR_DATA_CODE_OUT_OF_MEMORY :: 6
-
-MG_ERROR_DATA_CODE_SERVER_STOPPED :: 7
-
-MG_ERROR_DATA_CODE_INIT_LIBRARY_FAILED :: 8
-
-MG_ERROR_DATA_CODE_OS_ERROR :: 9
-
-MG_ERROR_DATA_CODE_INIT_PORTS_FAILED :: 10
-
-MG_ERROR_DATA_CODE_INIT_USER_FAILED :: 11
-
-MG_ERROR_DATA_CODE_INIT_ACL_FAILED :: 12
-
-MG_ERROR_DATA_CODE_INVALID_PASS_FILE :: 13
-
-MG_ERROR_DATA_CODE_SCRIPT_ERROR :: 14
-
-MG_ERROR_DATA_CODE_HOST_NOT_FOUND :: 15
-
-MG_ERROR_DATA_CODE_CONNECT_TIMEOUT :: 16
-
-MG_ERROR_DATA_CODE_CONNECT_FAILED :: 17
-
-MG_ERROR_DATA_CODE_TLS_CLIENT_CERT_ERROR :: 18
-
-MG_ERROR_DATA_CODE_TLS_SERVER_CERT_ERROR :: 19
-
-MG_ERROR_DATA_CODE_TLS_CONNECT_ERROR :: 20
-
-mg_init_data :: struct {
-	callbacks:             ^mg_callbacks, /* callback function pointer */
+init_data :: struct {
+	callbacks:             ^callbacks, /* callback function pointer */
 	user_data:             rawptr, /* data */
 	configuration_options: [^]cstring,
 }
-
-foreign import lib "./libcivetweb.a"
 
 @(default_calling_convention = "c", link_prefix = "mg_")
 foreign lib {
@@ -682,7 +652,7 @@ foreign lib {
 	
 	Return:
 	web server context, or NULL on error. */
-	start :: proc(callbacks: ^mg_callbacks, user_data: rawptr, configuration_options: [^]cstring) -> ^mg_context ---
+	start :: proc(callbacks: ^callbacks, user_data: rawptr, configuration_options: [^]cstring) -> ^mg_context ---
 
 	/* Stop the web server.
 	
@@ -731,25 +701,25 @@ foreign lib {
 	The URI used to remove a handler must match exactly the
 	one used to register it (not only a pattern match).
 	cbdata: the callback data to give to the handler when it is called. */
-	set_request_handler :: proc(ctx: ^mg_context, uri: cstring, handler: mg_request_handler, cbdata: rawptr) ---
+	set_request_handler :: proc(ctx: ^mg_context, uri: cstring, handler: request_handler, cbdata: rawptr) ---
 
 	/* mg_set_websocket_handler
 	
 	Set or remove handler functions for websocket connections.
 	This function works similar to mg_set_request_handler - see there. */
-	set_websocket_handler :: proc(ctx: ^mg_context, uri: cstring, connect_handler: mg_websocket_connect_handler, ready_handler: mg_websocket_ready_handler, data_handler: mg_websocket_data_handler, close_handler: mg_websocket_close_handler, cbdata: rawptr) ---
+	set_websocket_handler :: proc(ctx: ^mg_context, uri: cstring, connect_handler: websocket_connect_handler, ready_handler: websocket_ready_handler, data_handler: websocket_data_handler, close_handler: websocket_close_handler, cbdata: rawptr) ---
 
 	/* mg_set_websocket_handler
 	
 	Set or remove handler functions for websocket connections.
 	This function works similar to mg_set_request_handler - see there. */
-	set_websocket_handler_with_subprotocols :: proc(ctx: ^mg_context, uri: cstring, subprotocols: ^mg_websocket_subprotocols, connect_handler: mg_websocket_connect_handler, ready_handler: mg_websocket_ready_handler, data_handler: mg_websocket_data_handler, close_handler: mg_websocket_close_handler, cbdata: rawptr) ---
+	set_websocket_handler_with_subprotocols :: proc(ctx: ^mg_context, uri: cstring, subprotocols: ^websocket_subprotocols, connect_handler: websocket_connect_handler, ready_handler: websocket_ready_handler, data_handler: websocket_data_handler, close_handler: websocket_close_handler, cbdata: rawptr) ---
 
 	/* mg_set_auth_handler
 	
 	Sets or removes a URI mapping for an authorization handler.
 	This function works similar to mg_set_request_handler - see there. */
-	set_auth_handler :: proc(ctx: ^mg_context, uri: cstring, handler: mg_authorization_handler, cbdata: rawptr) ---
+	set_auth_handler :: proc(ctx: ^mg_context, uri: cstring, handler: authorization_handler, cbdata: rawptr) ---
 
 	/* Get the value of particular configuration parameter.
 	The value returned is read-only. Civetweb does not allow changing
@@ -760,16 +730,16 @@ foreign lib {
 	get_option :: proc(ctx: ^mg_context, name: cstring) -> cstring ---
 
 	/* Get context from connection. */
-	get_context :: proc(conn: ^mg_connection) -> ^mg_context ---
+	get_context :: proc(conn: ^connection) -> ^mg_context ---
 
 	/* Get user data passed to mg_start from context. */
 	get_user_data :: proc(ctx: ^mg_context) -> rawptr ---
 
 	/* Get user data passed to mg_start from connection. */
-	get_user_context_data :: proc(conn: ^mg_connection) -> rawptr ---
+	get_user_context_data :: proc(conn: ^connection) -> rawptr ---
 
 	/* Get user defined thread pointer for server threads (see init_thread). */
-	get_thread_pointer :: proc(conn: ^mg_connection) -> rawptr ---
+	get_thread_pointer :: proc(conn: ^connection) -> rawptr ---
 
 	/* Set user data for the current connection. */
 	/* Note: CivetWeb callbacks use "struct mg_connection *conn" as input
@@ -787,10 +757,10 @@ foreign lib {
 	data pointer in the user defined data structure and modify that
 	pointer. In either case, after the init_connection callback, only
 	calls to mg_get_user_connection_data should be required. */
-	set_user_connection_data :: proc(conn: ^mg_connection, data: rawptr) ---
+	set_user_connection_data :: proc(conn: ^connection, data: rawptr) ---
 
 	/* Get user data set for the current connection. */
-	get_user_connection_data :: proc(conn: ^mg_connection) -> rawptr ---
+	get_user_connection_data :: proc(conn: ^connection) -> rawptr ---
 
 	/* Get a formatted link corresponding to the current request
 	
@@ -801,19 +771,19 @@ foreign lib {
 	Returns:
 	<0: error
 	>=0: ok */
-	get_request_link :: proc(conn: ^mg_connection, buf: cstring, buflen: c.int) -> c.int ---
+	get_request_link :: proc(conn: ^connection, buf: cstring, buflen: c.int) -> c.int ---
 
 	/* Return array of struct mg_option, representing all valid configuration
 	options of civetweb.c.
 	The array is terminated by a NULL name option. */
-	get_valid_options :: proc() -> ^mg_option ---
+	get_valid_options :: proc() -> ^option ---
 
 	/* Get the list of ports that civetweb is listening on.
 	The parameter size is the size of the ports array in elements.
 	The caller is responsibility to allocate the required memory.
 	This function returns the number of struct mg_server_port elements
 	filled in, or <0 in case of an error. */
-	get_server_ports :: proc(ctx: ^mg_context, size: c.int, ports: ^mg_server_port) -> c.int ---
+	get_server_ports :: proc(ctx: ^mg_context, size: c.int, ports: ^server_port) -> c.int ---
 
 	/* Add, edit or delete the entry in the passwords file.
 	*
@@ -854,19 +824,19 @@ foreign lib {
 	* values were never returned in appropriate mg_request_info elements.
 	* It is strongly advised to use mg_get_response_info for clients.
 	*/
-	get_request_info :: proc(_: ^mg_connection) -> ^mg_request_info ---
+	get_request_info :: proc(_: ^connection) -> ^request_info ---
 
 	/* Return information associated with a HTTP/HTTPS response.
 	* Use this function in a client, to check the response from
 	* the server. */
-	get_response_info :: proc(_: ^mg_connection) -> ^mg_response_info ---
+	get_response_info :: proc(_: ^connection) -> ^response_info ---
 
 	/* Send data to the client.
 	Return:
 	0   when the connection has been closed
 	-1  on error
 	>0  number of bytes written on success */
-	write :: proc(_: ^mg_connection, buf: rawptr, len: c.int) -> c.int ---
+	write :: proc(_: ^connection, buf: rawptr, len: c.int) -> c.int ---
 
 	/* Send data to a websocket client wrapped in a websocket frame.  Uses
 	mg_lock_connection to ensure that the transmission is not interrupted,
@@ -880,7 +850,7 @@ foreign lib {
 	0   when the connection has been closed
 	-1  on error
 	>0  number of bytes written on success */
-	websocket_write :: proc(conn: ^mg_connection, opcode: c.int, data: cstring, data_len: c.int) -> c.int ---
+	websocket_write :: proc(conn: ^connection, opcode: c.int, data: cstring, data_len: c.int) -> c.int ---
 
 	/* Send data to a websocket server wrapped in a masked websocket frame.  Uses
 	mg_lock_connection to ensure that the transmission is not interrupted,
@@ -894,7 +864,7 @@ foreign lib {
 	0   when the connection has been closed
 	-1  on error
 	>0  number of bytes written on success */
-	websocket_client_write :: proc(conn: ^mg_connection, opcode: c.int, data: cstring, data_len: c.int) -> c.int ---
+	websocket_client_write :: proc(conn: ^connection, opcode: c.int, data: cstring, data_len: c.int) -> c.int ---
 
 	/* Blocks until unique access is obtained to this connection. Intended for use
 	with websockets only.
@@ -902,8 +872,8 @@ foreign lib {
 	websocket if your code has server-initiated communication as well as
 	communication in direct response to a message.
 	Do not acquire this lock while holding mg_lock_context(). */
-	lock_connection :: proc(conn: ^mg_connection) ---
-	unlock_connection :: proc(conn: ^mg_connection) ---
+	lock_connection :: proc(conn: ^connection) ---
+	unlock_connection :: proc(conn: ^connection) ---
 
 	/* Lock server context.  This lock may be used to protect resources
 	that are shared between different connection/worker threads.
@@ -913,12 +883,12 @@ foreign lib {
 
 	/* Send data to the client using printf() semantics.
 	Works exactly like mg_write(), but allows to do message formatting. */
-	printf :: proc(_: ^mg_connection, fmt: cstring, #c_vararg _: ..any) -> c.int ---
+	printf :: proc(_: ^connection, fmt: cstring, #c_vararg _: ..any) -> c.int ---
 
 	/* Send a part of the message body, if chunked transfer encoding is set.
 	* Only use this function after sending a complete HTTP request or response
 	* header with "Transfer-Encoding: chunked" set. */
-	send_chunk :: proc(conn: ^mg_connection, chunk: cstring, chunk_len: c.uint) -> c.int ---
+	send_chunk :: proc(conn: ^connection, chunk: cstring, chunk_len: c.uint) -> c.int ---
 
 	/* Send contents of the entire file together with HTTP headers.
 	* Parameters:
@@ -926,7 +896,7 @@ foreign lib {
 	*   path: Full path to the file to send.
 	* This function has been superseded by mg_send_mime_file
 	*/
-	send_file :: proc(conn: ^mg_connection, path: cstring) ---
+	send_file :: proc(conn: ^connection, path: cstring) ---
 
 	/* Send contents of the file without HTTP headers.
 	* The code must send a valid HTTP response header before using this function.
@@ -938,10 +908,10 @@ foreign lib {
 	* Return:
 	*   < 0   Error
 	*/
-	send_file_body :: proc(conn: ^mg_connection, path: cstring) -> c.int ---
+	send_file_body :: proc(conn: ^connection, path: cstring) -> c.int ---
 
 	/* Send HTTP error reply. */
-	send_http_error :: proc(conn: ^mg_connection, status_code: c.int, fmt: cstring, #c_vararg _: ..any) -> c.int ---
+	send_http_error :: proc(conn: ^connection, status_code: c.int, fmt: cstring, #c_vararg _: ..any) -> c.int ---
 
 	/* Send "HTTP 200 OK" response header.
 	* After calling this function, use mg_write or mg_send_chunk to send the
@@ -954,7 +924,7 @@ foreign lib {
 	* Return:
 	*   < 0   Error
 	*/
-	send_http_ok :: proc(conn: ^mg_connection, mime_type: cstring, content_length: c.longlong) -> c.int ---
+	send_http_ok :: proc(conn: ^connection, mime_type: cstring, content_length: c.longlong) -> c.int ---
 
 	/* Send "HTTP 30x" redirect response.
 	* The response has content-size zero: do not send any body data after calling
@@ -966,7 +936,7 @@ foreign lib {
 	* Return:
 	*   < 0   Error (-1 send error, -2 parameter error)
 	*/
-	send_http_redirect :: proc(conn: ^mg_connection, target_url: cstring, redirect_code: c.int) -> c.int ---
+	send_http_redirect :: proc(conn: ^connection, target_url: cstring, redirect_code: c.int) -> c.int ---
 
 	/* Send HTTP digest access authentication request.
 	* Browsers will send a user name and password in their next request, showing
@@ -978,7 +948,7 @@ foreign lib {
 	* Return:
 	*   < 0   Error
 	*/
-	send_digest_access_authentication_request :: proc(conn: ^mg_connection, realm: cstring) -> c.int ---
+	send_digest_access_authentication_request :: proc(conn: ^connection, realm: cstring) -> c.int ---
 
 	/* Check if the current request has a valid authentication token set.
 	* A file is used to provide a list of valid user names, realms and
@@ -998,7 +968,7 @@ foreign lib {
 	*   -1    Parameter error
 	*   -2    File not found
 	*/
-	check_digest_access_authentication :: proc(conn: ^mg_connection, realm: cstring, filename: cstring) -> c.int ---
+	check_digest_access_authentication :: proc(conn: ^connection, realm: cstring, filename: cstring) -> c.int ---
 
 	/* Send contents of the entire file together with HTTP headers.
 	* Parameters:
@@ -1007,7 +977,7 @@ foreign lib {
 	*   mime_type: Content-Type for file.  NULL will cause the type to be
 	*              looked up by the file extension.
 	*/
-	send_mime_file :: proc(conn: ^mg_connection, path: cstring, mime_type: cstring) ---
+	send_mime_file :: proc(conn: ^connection, path: cstring, mime_type: cstring) ---
 
 	/* Send contents of the entire file together with HTTP headers.
 	Parameters:
@@ -1020,24 +990,24 @@ foreign lib {
 	not included twice.
 	NULL does not append anything.
 	*/
-	send_mime_file2 :: proc(conn: ^mg_connection, path: cstring, mime_type: cstring, additional_headers: cstring) ---
+	send_mime_file2 :: proc(conn: ^connection, path: cstring, mime_type: cstring, additional_headers: cstring) ---
 
 	/* Store body data into a file. */
-	store_body :: proc(conn: ^mg_connection, path: cstring) -> c.longlong ---
+	store_body :: proc(conn: ^connection, path: cstring) -> c.longlong ---
 
 	/* Read data from the remote end, return number of bytes read.
 	Return:
 	0     connection has been closed by peer. No more data could be read.
 	< 0   read error. No more data could be read from the connection.
 	> 0   number of bytes read into the buffer. */
-	read :: proc(_: ^mg_connection, buf: rawptr, len: c.int) -> c.int ---
+	read :: proc(_: ^connection, buf: rawptr, len: c.int) -> c.int ---
 
 	/* Get the value of particular HTTP header.
 	
 	This is a helper function. It traverses request_info->http_headers array,
 	and if the header is present in the array, returns its value. If it is
 	not present, NULL is returned. */
-	get_header :: proc(_: ^mg_connection, name: cstring) -> cstring ---
+	get_header :: proc(_: ^connection, name: cstring) -> cstring ---
 
 	/* Get a value of particular form variable.
 	
@@ -1112,7 +1082,7 @@ foreign lib {
 	On success: number of form_fields filled
 	On error:
 	-1 (parameter error). */
-	split_form_urlencoded :: proc(data: cstring, form_fields: ^mg_header, num_form_fields: c.uint) -> c.int ---
+	split_form_urlencoded :: proc(data: cstring, form_fields: ^header, num_form_fields: c.uint) -> c.int ---
 
 	/* Fetch value of certain cookie variable into the destination buffer.
 	
@@ -1148,10 +1118,10 @@ foreign lib {
 	mg_printf and mg_get_response. Using these three functions directly may
 	allow more control as compared to using mg_download.
 	*/
-	download :: proc(host: cstring, port: c.int, use_ssl: c.int, error_buffer: cstring, error_buffer_size: c.int, request_fmt: cstring, #c_vararg _: ..any) -> ^mg_connection ---
+	download :: proc(host: cstring, port: c.int, use_ssl: c.int, error_buffer: cstring, error_buffer_size: c.int, request_fmt: cstring, #c_vararg _: ..any) -> ^connection ---
 
 	/* Close the connection opened by mg_download(). */
-	close_connection :: proc(conn: ^mg_connection) ---
+	close_connection :: proc(conn: ^connection) ---
 
 	/* Process form data.
 	* Returns the number of fields handled, or < 0 in case of an error.
@@ -1160,15 +1130,15 @@ foreign lib {
 	* error. In this case a number < 0 is returned as well.
 	* In any case, it is the duty of the caller to remove files once they are
 	* no longer required. */
-	handle_form_request :: proc(conn: ^mg_connection, fdh: ^mg_form_data_handler) -> c.int ---
-	start_thread :: proc(f: mg_thread_func_t, p: rawptr) -> c.int ---
+	handle_form_request :: proc(conn: ^connection, fdh: ^form_data_handler) -> c.int ---
+	start_thread :: proc(f: thread_func_t, p: rawptr) -> c.int ---
 
 	/* Return builtin mime type for the given file name.
 	For unrecognized extensions, "text/plain" is returned. */
 	get_builtin_mime_type :: proc(file_name: cstring) -> cstring ---
 
 	/* Get text representation of HTTP status code. */
-	get_response_code_text :: proc(conn: ^mg_connection, response_code: c.int) -> cstring ---
+	get_response_code_text :: proc(conn: ^connection, response_code: c.int) -> cstring ---
 
 	/* Return CivetWeb version. */
 	version :: proc() -> cstring ---
@@ -1209,7 +1179,7 @@ foreign lib {
 	...: variable argument list
 	Example:
 	mg_cry(conn,"i like %s", "logging"); */
-	cry :: proc(conn: ^mg_connection, fmt: cstring, #c_vararg _: ..any) ---
+	cry :: proc(conn: ^connection, fmt: cstring, #c_vararg _: ..any) ---
 
 	/* utility methods to compare two buffers, case insensitive. */
 	strcasecmp :: proc(s1: cstring, s2: cstring) -> c.int ---
@@ -1233,8 +1203,8 @@ foreign lib {
 	On success, valid mg_connection object.
 	On error, NULL. Se error_buffer for details.
 	*/
-	connect_websocket_client :: proc(host: cstring, port: c.int, use_ssl: c.int, error_buffer: cstring, error_buffer_size: c.int, path: cstring, origin: cstring, data_func: mg_websocket_data_handler, close_func: mg_websocket_close_handler, user_data: rawptr) -> ^mg_connection ---
-	connect_websocket_client_extensions :: proc(host: cstring, port: c.int, use_ssl: c.int, error_buffer: cstring, error_buffer_size: c.int, path: cstring, origin: cstring, extensions: cstring, data_func: mg_websocket_data_handler, close_func: mg_websocket_close_handler, user_data: rawptr) -> ^mg_connection ---
+	connect_websocket_client :: proc(host: cstring, port: c.int, use_ssl: c.int, error_buffer: cstring, error_buffer_size: c.int, path: cstring, origin: cstring, data_func: websocket_data_handler, close_func: websocket_close_handler, user_data: rawptr) -> ^connection ---
+	connect_websocket_client_extensions :: proc(host: cstring, port: c.int, use_ssl: c.int, error_buffer: cstring, error_buffer_size: c.int, path: cstring, origin: cstring, extensions: cstring, data_func: websocket_data_handler, close_func: websocket_close_handler, user_data: rawptr) -> ^connection ---
 
 	/* Connect to a TCP server as a client (can be used to connect to a HTTP server)
 	Parameters:
@@ -1248,10 +1218,10 @@ foreign lib {
 	On success, valid mg_connection object.
 	On error, NULL. Se error_buffer for details.
 	*/
-	connect_client :: proc(host: cstring, port: c.int, use_ssl: c.int, error_buffer: cstring, error_buffer_size: c.int) -> ^mg_connection ---
-	connect_client_secure :: proc(client_options: ^mg_client_options, error_buffer: cstring, error_buffer_size: c.int) -> ^mg_connection ---
-	connect_websocket_client_secure :: proc(client_options: ^mg_client_options, error_buffer: cstring, error_buffer_size: c.int, path: cstring, origin: cstring, data_func: mg_websocket_data_handler, close_func: mg_websocket_close_handler, user_data: rawptr) -> ^mg_connection ---
-	connect_websocket_client_secure_extensions :: proc(client_options: ^mg_client_options, error_buffer: cstring, error_buffer_size: c.int, path: cstring, origin: cstring, extensions: cstring, data_func: mg_websocket_data_handler, close_func: mg_websocket_close_handler, user_data: rawptr) -> ^mg_connection ---
+	connect_client :: proc(host: cstring, port: c.int, use_ssl: c.int, error_buffer: cstring, error_buffer_size: c.int) -> ^connection ---
+	connect_client_secure :: proc(client_options: ^client_options, error_buffer: cstring, error_buffer_size: c.int) -> ^connection ---
+	connect_websocket_client_secure :: proc(client_options: ^client_options, error_buffer: cstring, error_buffer_size: c.int, path: cstring, origin: cstring, data_func: websocket_data_handler, close_func: websocket_close_handler, user_data: rawptr) -> ^connection ---
+	connect_websocket_client_secure_extensions :: proc(client_options: ^client_options, error_buffer: cstring, error_buffer_size: c.int, path: cstring, origin: cstring, extensions: cstring, data_func: websocket_data_handler, close_func: websocket_close_handler, user_data: rawptr) -> ^connection ---
 
 	/* Wait for a response from the server
 	Parameters:
@@ -1264,7 +1234,7 @@ foreign lib {
 	On success, >= 0
 	On error/timeout, < 0
 	*/
-	get_response :: proc(conn: ^mg_connection, ebuf: cstring, ebuf_len: c.int, timeout: c.int) -> c.int ---
+	get_response :: proc(conn: ^connection, ebuf: cstring, ebuf_len: c.int, timeout: c.int) -> c.int ---
 
 	/* Initialize a new HTTP response
 	* Parameters:
@@ -1277,7 +1247,7 @@ foreign lib {
 	*  -3:    invalid connection status
 	*  -4:    network error (only if built with NO_RESPONSE_BUFFERING)
 	*/
-	response_header_start :: proc(conn: ^mg_connection, status: c.int) -> c.int ---
+	response_header_start :: proc(conn: ^connection, status: c.int) -> c.int ---
 
 	/* Add a new HTTP response header line
 	* Parameters:
@@ -1294,7 +1264,7 @@ foreign lib {
 	*  -4:    too many headers
 	*  -5:    out of memory
 	*/
-	response_header_add :: proc(conn: ^mg_connection, header: cstring, value: cstring, value_len: c.int) -> c.int ---
+	response_header_add :: proc(conn: ^connection, header: cstring, value: cstring, value_len: c.int) -> c.int ---
 
 	/* Add a complete header string (key + value).
 	* This function is less efficient as compared to mg_response_header_add,
@@ -1310,7 +1280,7 @@ foreign lib {
 	*  -4:    too many headers
 	*  -5:    out of memory
 	*/
-	response_header_add_lines :: proc(conn: ^mg_connection, http1_headers: cstring) -> c.int ---
+	response_header_add_lines :: proc(conn: ^connection, http1_headers: cstring) -> c.int ---
 
 	/* Send http response
 	* Parameters:
@@ -1322,7 +1292,7 @@ foreign lib {
 	*  -3:    invalid connection status
 	*  -4:    sending failed (network error)
 	*/
-	response_header_send :: proc(conn: ^mg_connection) -> c.int ---
+	response_header_send :: proc(conn: ^connection) -> c.int ---
 
 	/* Check which features where set when the civetweb library has been compiled.
 	The function explicitly addresses compile time defines used when building
@@ -1394,7 +1364,7 @@ foreign lib {
 	Parameters:
 	conn: Current connection handle.
 	*/
-	disable_connection_keep_alive :: proc(conn: ^mg_connection) ---
-	start2 :: proc(init: ^mg_init_data, error: ^mg_error_data) -> ^mg_context ---
-	start_domain2 :: proc(ctx: ^mg_context, configuration_options: [^]cstring, error: ^mg_error_data) -> c.int ---
+	disable_connection_keep_alive :: proc(conn: ^connection) ---
+	start2 :: proc(init: ^init_data, error: ^error_data) -> ^mg_context ---
+	start_domain2 :: proc(ctx: ^mg_context, configuration_options: [^]cstring, error: ^error_data) -> c.int ---
 }
